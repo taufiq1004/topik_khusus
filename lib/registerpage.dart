@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
+import 'package:dio_cookie_manager/dio_cookie_manager.dart';
+import 'package:cookie_jar/cookie_jar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:topik_khusus/loginpage.dart';
 
@@ -15,27 +18,94 @@ class _RegisterPageState extends State<RegisterPage> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   String _message = '';
+  bool _isLoading = false;
+  late Dio _dio;
+
+  @override
+  void initState() {
+    super.initState();
+    _dio = Dio(BaseOptions(
+      baseUrl: 'http://10.0.2.2:3000', // Sesuaikan dengan URL backend
+      connectTimeout: const Duration(seconds: 5),
+      receiveTimeout: const Duration(seconds: 3),
+    ));
+    _dio.interceptors.add(CookieManager(CookieJar()));
+  }
 
   Future<void> _register() async {
     if (_formKey.currentState!.validate()) {
-      final prefs = await SharedPreferences.getInstance();
-      String email = _emailController.text;
-      String username = _usernameController.text;
-      String password = _passwordController.text;
-
-      await prefs.setString('email', email);
-      await prefs.setString('username', username);
-      await prefs.setString('password', password);
-
       setState(() {
-        _message = 'Registrasi berhasil!';
+        _isLoading = true;
+        _message = '';
       });
 
-      await Future.delayed(const Duration(seconds: 1));
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const LoginPage()),
-      );
+      final String email = _emailController.text;
+      final String username = _usernameController.text;
+      final String password = _passwordController.text;
+
+      try {
+        final response = await _dio.post(
+          '/register',
+          data: {
+            'email': email,
+            'username': username,
+            'password': password,
+          },
+          options: Options(
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          ),
+        );
+
+        final cookies =
+            await CookieJar().loadForRequest(Uri.parse('http://10.0.2.2:3000'));
+        print('Cookies after register: $cookies');
+
+        final data = response.data;
+        final SharedPreferences prefs = await SharedPreferences.getInstance();
+        await prefs.setString('userId', data['user']['id_users'].toString());
+        await prefs.setString('username', data['user']['username']);
+        await prefs.setString('email', data['user']['email']);
+
+        setState(() {
+          _message = 'Registrasi berhasil!';
+        });
+
+        await Future.delayed(const Duration(seconds: 1));
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => const LoginPage()),
+        );
+      } catch (e) {
+        setState(() {
+          if (e is DioException && e.response != null) {
+            final errorData = e.response!.data;
+            if (errorData is Map && errorData.containsKey('errors')) {
+              final errors = errorData['errors'] as List;
+              _message = errors.join(', ');
+            } else if (errorData['message'] != null) {
+              _message = errorData['message'];
+            } else {
+              _message = 'Gagal registrasi: ${e.message}';
+            }
+          } else {
+            _message = 'Gagal registrasi: $e';
+          }
+        });
+      } finally {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _usernameController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   @override
@@ -91,9 +161,13 @@ class _RegisterPageState extends State<RegisterPage> {
                             color: Color(0xFF493628),
                           ),
                         ),
+                        keyboardType: TextInputType.emailAddress,
                         validator: (value) {
                           if (value == null || value.isEmpty) {
-                            return 'Username tidak boleh kosong';
+                            return 'Email tidak boleh kosong';
+                          }
+                          if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) {
+                            return 'Masukkan email yang valid';
                           }
                           return null;
                         },
@@ -119,6 +193,9 @@ class _RegisterPageState extends State<RegisterPage> {
                         validator: (value) {
                           if (value == null || value.isEmpty) {
                             return 'Username tidak boleh kosong';
+                          }
+                          if (value.length < 3) {
+                            return 'Username minimal 3 karakter';
                           }
                           return null;
                         },
@@ -146,6 +223,9 @@ class _RegisterPageState extends State<RegisterPage> {
                           if (value == null || value.isEmpty) {
                             return 'Password tidak boleh kosong';
                           }
+                          if (value.length < 6) {
+                            return 'Password minimal 6 karakter';
+                          }
                           return null;
                         },
                       ),
@@ -162,7 +242,7 @@ class _RegisterPageState extends State<RegisterPage> {
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: ElevatedButton(
-                          onPressed: _register,
+                          onPressed: _isLoading ? null : _register,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.transparent,
                             shadowColor: Colors.transparent,
@@ -171,14 +251,18 @@ class _RegisterPageState extends State<RegisterPage> {
                               borderRadius: BorderRadius.circular(10),
                             ),
                           ),
-                          child: const Text(
-                            'Register',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFFE4E0E1),
-                            ),
-                          ),
+                          child: _isLoading
+                              ? const CircularProgressIndicator(
+                                  color: Color(0xFFE4E0E1),
+                                )
+                              : const Text(
+                                  'Register',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFFE4E0E1),
+                                  ),
+                                ),
                         ),
                       ),
                       const SizedBox(height: 10),
@@ -205,7 +289,7 @@ class _RegisterPageState extends State<RegisterPage> {
                         style: TextStyle(
                           color: _message.contains('berhasil')
                               ? const Color(0xFF493628)
-                              : const Color(0xFFE4E0E1),
+                              : const Color.fromARGB(255, 80, 0, 0),
                           fontWeight: FontWeight.bold,
                         ),
                       ),

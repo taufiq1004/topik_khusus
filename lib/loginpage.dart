@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
+import 'package:dio_cookie_manager/dio_cookie_manager.dart';
+import 'package:cookie_jar/cookie_jar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:topik_khusus/registerpage.dart';
+import 'homepage.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -11,9 +15,94 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   String _message = '';
+  bool _isLoading = false;
+  late Dio _dio;
+
+  @override
+  void initState() {
+    super.initState();
+    // Inisialisasi Dio dengan CookieManager
+    _dio = Dio(BaseOptions(
+      baseUrl: 'http://10.0.2.2:3000', // Ganti dengan URL API kamu
+      connectTimeout: const Duration(seconds: 5),
+      receiveTimeout: const Duration(seconds: 3),
+    ));
+    _dio.interceptors.add(CookieManager(CookieJar()));
+  }
+
+  Future<void> _login() async {
+    if (_formKey.currentState!.validate()) {
+      setState(() {
+        _isLoading = true;
+        _message = '';
+      });
+
+      final String email = _emailController.text;
+      final String password = _passwordController.text;
+
+      try {
+        // Kirim request login
+        final response = await _dio.post(
+          '/login',
+          data: {
+            'email': email,
+            'password': password,
+          },
+          options: Options(
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          ),
+        );
+
+        // Log cookie untuk debugging
+        final cookies =
+            await CookieJar().loadForRequest(Uri.parse('http://10.0.2.2:3000'));
+        print('Cookies after login: $cookies');
+
+        // Simpan data pengguna ke SharedPreferences
+        final data = response.data;
+        final SharedPreferences prefs = await SharedPreferences.getInstance();
+        await prefs.setString('userId', data['user']['id_users'].toString());
+        await prefs.setString('username', data['user']['username']);
+        await prefs.setString('email', data['user']['email']);
+
+        setState(() {
+          _message = 'Login berhasil';
+        });
+
+        // Navigasi ke HomePage
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const HomePage()),
+        );
+      } catch (e) {
+        setState(() {
+          String errorMessage = e.toString().replaceFirst('Exception: ', '');
+          if (errorMessage.contains('Invalid email') ||
+              errorMessage.contains('Invalid password')) {
+            _message = 'Email atau password salah';
+          } else {
+            _message = 'Gagal login: $errorMessage';
+          }
+        });
+      } finally {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +126,7 @@ class _LoginPageState extends State<LoginPage> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(15),
               ),
-              color: Color.fromARGB(255, 255, 255, 255),
+              color: const Color.fromARGB(255, 255, 255, 255),
               child: Padding(
                 padding: const EdgeInsets.all(20.0),
                 child: Form(
@@ -52,25 +141,29 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                       const SizedBox(height: 20),
                       TextFormField(
-                        controller: _usernameController,
+                        controller: _emailController,
                         decoration: InputDecoration(
                           labelStyle: const TextStyle(
                             color: Color(0xFF493628),
                           ),
-                          hintText: "Username",
+                          hintText: "Email",
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
                           filled: true,
                           fillColor: const Color(0xFFE4E0E1),
                           prefixIcon: const Icon(
-                            Icons.person,
+                            Icons.email,
                             color: Color(0xFF493628),
                           ),
                         ),
+                        keyboardType: TextInputType.emailAddress,
                         validator: (value) {
                           if (value == null || value.isEmpty) {
-                            return 'Username tidak boleh kosong';
+                            return 'Email tidak boleh kosong';
+                          }
+                          if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) {
+                            return 'Masukkan email yang valid';
                           }
                           return null;
                         },
@@ -114,11 +207,7 @@ class _LoginPageState extends State<LoginPage> {
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: ElevatedButton(
-                          onPressed: () {
-                            if (_formKey.currentState!.validate()) {
-                              _LoginPageState();
-                            }
-                          },
+                          onPressed: _isLoading ? null : _login,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.transparent,
                             shadowColor: Colors.transparent,
@@ -127,23 +216,28 @@ class _LoginPageState extends State<LoginPage> {
                               borderRadius: BorderRadius.circular(10),
                             ),
                           ),
-                          child: const Text(
-                            'Login',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFFE4E0E1),
-                            ),
-                          ),
+                          child: _isLoading
+                              ? const CircularProgressIndicator(
+                                  color: Color(0xFFE4E0E1),
+                                )
+                              : const Text(
+                                  'Login',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFFE4E0E1),
+                                  ),
+                                ),
                         ),
                       ),
                       const SizedBox(height: 10),
                       InkWell(
                         onTap: () {
-                          Navigator.of(context)
-                              .pushReplacement(MaterialPageRoute(
-                            builder: (context) => RegisterPage(),
-                          ));
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => const RegisterPage(),
+                            ),
+                          );
                         },
                         child: const Text(
                           "Create New Account",
@@ -160,7 +254,7 @@ class _LoginPageState extends State<LoginPage> {
                         style: TextStyle(
                           color: _message.contains('berhasil')
                               ? const Color(0xFF493628)
-                              : const Color(0xFFE4E0E1),
+                              : const Color.fromARGB(255, 80, 0, 0),
                           fontWeight: FontWeight.bold,
                         ),
                       ),
