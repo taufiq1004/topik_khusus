@@ -1,8 +1,6 @@
 import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-// import 'package:fluttericon/rpg_awesome_icons.dart';
 import 'package:http/http.dart' as http;
 
 class HomePage extends StatefulWidget {
@@ -13,31 +11,19 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  // final List<Map<String, dynamic>> categories = [
-  //   {'icon': Icons.cleaning_services, 'label': 'Peralatan'},
-  //   {'icon': Icons.phone_android, 'label': 'Elektronik'},
-  //   {'icon': RpgAwesome.shoe_prints, 'label': 'Sepatu'},
-  //   {'icon': Icons.man, 'label': 'Baju Pria'},
-  //   {'icon': Icons.woman, 'label': 'Baju Wanita'},
-  // ];
-
-  List<dynamic> dataProduct = [];
-
-  @override
-  void initState() {
-    super.initState();
-    getAllProduct();
-  }
-
-  Future<void> getAllProduct() async {
+  Future<List<dynamic>> getAllProduct() async {
     String urlAll = "http://10.0.2.2:3000/products";
     try {
       var response = await http.get(Uri.parse(urlAll));
-      dataProduct = jsonDecode(response.body);
-    } catch (exc) {
-      if (kDebugMode) {
-        print(exc);
+      if (response.statusCode == 200) {
+        print("Response Body: ${response.body}"); // Debugging
+        return jsonDecode(response.body);
+      } else {
+        throw Exception("Gagal mengambil data: Status ${response.statusCode}");
       }
+    } catch (exc) {
+      print("Error: $exc"); // Debugging
+      throw Exception("Error: $exc");
     }
   }
 
@@ -134,105 +120,121 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
 
+            // Bagian produk dengan FutureBuilder
             Expanded(
               child: Container(
                 color: const Color.fromARGB(255, 255, 255, 255),
                 child: Padding(
                   padding: const EdgeInsets.all(10),
-                  child: GridView.builder(
-                    itemCount: dataProduct.length,
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 10.0,
-                      mainAxisSpacing: 10.0,
-                    ),
-                    itemBuilder: (context, index) {
-                      final itemData = dataProduct[index];
+                  child: FutureBuilder<List<dynamic>>(
+                    future: getAllProduct(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      } else if (snapshot.hasError) {
+                        return Center(child: Text("Error: ${snapshot.error}"));
+                      } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                        return const Center(
+                            child: Text("Tidak ada produk tersedia"));
+                      }
 
-                      return Card(
-                        child: Column(
-                          children: <Widget>[
-                            Image.network(
-                              itemData['image'] ?? '',
-                              width: double.infinity,
-                              height: 100,
-                              fit: BoxFit.fill,
-                              loadingBuilder:
-                                  (context, child, loadingProgress) {
-                                if (loadingProgress == null) {
-                                  return child;
-                                } else {
-                                  return CircularProgressIndicator(
-                                    value: loadingProgress.expectedTotalBytes !=
-                                            null
-                                        ? loadingProgress
-                                                .cumulativeBytesLoaded /
-                                            (loadingProgress
-                                                    .expectedTotalBytes ??
-                                                1)
-                                        : null,
-                                  );
-                                }
-                              },
-                              errorBuilder: (context, error, stackTrace) {
-                                return const Text("Gagal Memuat Gambar Produk",
-                                    textAlign: TextAlign.justify);
-                              },
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(10, 5, 10, 5),
-                              child: Text(
-                                itemData['name'] ?? 'Nama Tidak Tersedia',
-                                style: const TextStyle(
-                                  color: Colors.red,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.bold,
+                      final dataProduct = snapshot.data!;
+                      return GridView.builder(
+                        itemCount: dataProduct.length,
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          crossAxisSpacing: 10.0,
+                          mainAxisSpacing: 10.0,
+                        ),
+                        itemBuilder: (context, index) {
+                          final itemData = dataProduct[index];
+                          return Card(
+                            child: Column(
+                              children: <Widget>[
+                                Image.network(
+                                  itemData['image'] ?? '',
+                                  width: double.infinity,
+                                  height: 100,
+                                  fit: BoxFit.fill,
+                                  loadingBuilder:
+                                      (context, child, loadingProgress) {
+                                    if (loadingProgress == null) {
+                                      return child;
+                                    }
+                                    return CircularProgressIndicator(
+                                      value: loadingProgress.expectedTotalBytes !=
+                                              null
+                                          ? loadingProgress.cumulativeBytesLoaded /
+                                              (loadingProgress.expectedTotalBytes ??
+                                                  1)
+                                          : null,
+                                    );
+                                  },
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return const Text(
+                                      "Gagal Memuat Gambar Produk",
+                                      textAlign: TextAlign.justify,
+                                    );
+                                  },
                                 ),
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(10, 5, 10, 5),
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    'Rp ${itemData['price'].toString()}',
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.fromLTRB(10, 5, 10, 5),
+                                  child: Text(
+                                    itemData['name'] ?? 'Nama Tidak Tersedia',
                                     style: const TextStyle(
-                                      color: Colors.black,
-                                      fontSize: 12,
+                                      color: Colors.red,
+                                      fontSize: 15,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
-                                  Row(
+                                ),
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.fromLTRB(10, 5, 10, 5),
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
                                     children: [
-                                      const Icon(
-                                        Icons.inventory,
-                                        size: 10,
-                                        color: Colors.red,
-                                      ),
                                       Text(
-                                        itemData['stock'].toString(),
+                                        'Rp ${itemData['price']?.toString() ?? '0'}',
                                         style: const TextStyle(
-                                          color: Colors.green,
+                                          color: Colors.black,
                                           fontSize: 12,
                                           fontWeight: FontWeight.bold,
                                         ),
                                       ),
+                                      Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.inventory,
+                                            size: 10,
+                                            color: Colors.red,
+                                          ),
+                                          Text(
+                                            itemData['stock']?.toString() ?? '0',
+                                            style: const TextStyle(
+                                              color: Colors.green,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ],
-                                  )
-                                ],
-                              ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
+                          );
+                        },
                       );
                     },
                   ),
                 ),
               ),
-            )
+            ),
           ],
         ),
       ),
