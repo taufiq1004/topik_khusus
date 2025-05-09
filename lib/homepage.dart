@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:topik_khusus/about.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -36,7 +37,7 @@ class _HomePageState extends State<HomePage> {
             // Bagian atas
             Container(
               decoration: const BoxDecoration(
-                color: Color.fromARGB(255, 0, 191, 255),
+                color: Color(0xFFAB886D),
                 borderRadius: BorderRadius.only(
                   bottomLeft: Radius.circular(20),
                   bottomRight: Radius.circular(20),
@@ -63,10 +64,16 @@ class _HomePageState extends State<HomePage> {
                               color: Colors.white,
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(
-                              Icons.person,
-                              color: Color.fromARGB(255, 0, 191, 255),
-                              size: 24,
+                            child: IconButton(
+                              onPressed: () {
+                                Navigator.of(context).push(MaterialPageRoute(
+                                  builder: (context) => const AboutPage(),
+                                ));
+                              },
+                              icon: const Icon(Icons.person),
+                              color: const Color(0xFFAB886D),
+                              iconSize: 24,
+                              splashRadius: 20,
                             ),
                           ),
                         ),
@@ -163,12 +170,15 @@ class _HomePageState extends State<HomePage> {
                                       return child;
                                     }
                                     return CircularProgressIndicator(
-                                      value: loadingProgress.expectedTotalBytes !=
-                                              null
-                                          ? loadingProgress.cumulativeBytesLoaded /
-                                              (loadingProgress.expectedTotalBytes ??
-                                                  1)
-                                          : null,
+                                      value:
+                                          loadingProgress.expectedTotalBytes !=
+                                                  null
+                                              ? loadingProgress
+                                                      .cumulativeBytesLoaded /
+                                                  (loadingProgress
+                                                          .expectedTotalBytes ??
+                                                      1)
+                                              : null,
                                     );
                                   },
                                   errorBuilder: (context, error, stackTrace) {
@@ -213,7 +223,8 @@ class _HomePageState extends State<HomePage> {
                                             color: Colors.red,
                                           ),
                                           Text(
-                                            itemData['stock']?.toString() ?? '0',
+                                            itemData['stock']?.toString() ??
+                                                '0',
                                             style: const TextStyle(
                                               color: Colors.green,
                                               fontSize: 12,
